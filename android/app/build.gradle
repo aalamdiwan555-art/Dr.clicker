@@ -16,7 +16,7 @@ apply from: "$flutterRoot/packages/flutter_tools/gradle/flutter.gradle"
 android {
     namespace "com.dr.clicker.atikapp"
     compileSdkVersion 35
-    ndkVersion flutter.ndkVersion
+    ndkVersion "26.1.10909125"
 
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_1_8
