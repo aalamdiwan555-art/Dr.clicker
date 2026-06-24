@@ -251,8 +251,9 @@ class AutoClickService : AccessibilityService() {
         val stroke  = GestureDescription.StrokeDescription(path, 0L, dur)
         val gesture = GestureDescription.Builder().addStroke(stroke).build()
         dispatchGesture(gesture, object : GestureResultCallback() {
-            override fun onCancelled(g: GestureDescription) =
+            override fun onCancelled(g: GestureDescription) {
                 Log.w(TAG, "Gesture cancelled at ($x,$y)")
+            }
         }, handler)
     }
 
