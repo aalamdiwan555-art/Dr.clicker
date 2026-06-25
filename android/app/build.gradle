@@ -27,9 +27,15 @@ android {
         versionName "1.0.0"
     }
     buildTypes {
-        release {
-            signingConfig signingConfigs.debug
+        debug {
             minifyEnabled false
+            shrinkResources false
+            signingConfig signingConfigs.debug
+        }
+        release {
+            minifyEnabled false
+            shrinkResources false
+            signingConfig signingConfigs.debug
         }
     }
 }
