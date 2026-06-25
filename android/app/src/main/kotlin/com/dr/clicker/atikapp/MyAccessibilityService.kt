@@ -104,6 +104,18 @@ class MyAccessibilityService : AccessibilityService() {
         log("🚀 Dr.Clicker v24.1 PURE CLONE ONLINE | 600000L Wakelock | Exact Click Engine")
     }
 
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        log("🚀 Service onStartCommand called")
+        if (getBoolPref("master_switch") || getBoolPref("flutter.masterSwitch")) {
+            if (!isForegroundRunning) {
+                startForegroundService()
+                isForegroundRunning = true
+            }
+            acquireWakeLock()
+        }
+        return START_STICKY
+    }
+
     override fun onInterrupt() {
         isEngineOn = false
     }
@@ -111,6 +123,19 @@ class MyAccessibilityService : AccessibilityService() {
     override fun onDestroy() {
         isEngineOn = false
         releaseWakeLock()
+        // Try to restart if master switch is still ON
+        val masterOn = getBoolPref("master_switch") || getBoolPref("flutter.masterSwitch")
+        if (masterOn) {
+            log("🔄 Service destroyed, trying to restart...")
+            val restartIntent = Intent(this, MyAccessibilityService::class.java)
+            try {
+                if (Build.VERSION.SDK_INT >= 26) {
+                    startForegroundService(restartIntent)
+                } else {
+                    startService(restartIntent)
+                }
+            } catch (_: Exception) {}
+        }
         super.onDestroy()
     }
 
@@ -193,17 +218,22 @@ class MyAccessibilityService : AccessibilityService() {
                 root.packageName?.toString()?.lowercase(Locale.ROOT) ?: ""
             } catch (_: Exception) { "" }
 
-            val isRapido = pkg == "com.rapido.rider" || pkg.contains("rapido") || pkg.contains("captain")
-            val isOla = pkg == "com.olacabs.oladriver" || (pkg.contains("ola") && pkg.contains("driver"))
+            val isRapido = pkg.contains("rapido") || pkg.contains("captain")
+            val isOla = pkg.contains("ola") && pkg.contains("driver")
+            val isUber = pkg.contains("uber") && pkg.contains("driver")
+            val isNamma = pkg.contains("namma") || pkg.contains("yatri")
             val isPopup = type == AccessibilityWindowInfo.TYPE_SYSTEM
 
-            if (isRapido || isOla || isPopup) {
-                val tag = when {
-                    isOla -> if (isPopup) "[Ola-Popup]" else "[Ola-InApp]"
-                    else -> if (isPopup) "[Rapido-Popup]" else "[Rapido-InApp]"
-                }
-                scanAndClick(root, now, tag)
+            // Scan ALL apps + popups for accept buttons
+            val tag = when {
+                isOla -> "[Ola]"
+                isUber -> "[Uber]"
+                isNamma -> "[Namma]"
+                isRapido -> "[Rapido]"
+                isPopup -> "[Popup]"
+                else -> "[${pkg.take(20)}]"
             }
+            scanAndClick(root, now, tag)
             recycleNode(root)
         }
     }
