@@ -14,15 +14,11 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
-/**
- * Dr.Clicker MainActivity
- * Flutter bridge + overlay permission helper
- * Based on Me Clicker MainActivity logic
- */
 class MainActivity : FlutterActivity() {
 
     private val CHANNEL = "com.example.meclicker/settings"
     private val OVERLAY_REQ = 1001
+    private val BATTERY_REQ = 1002
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -44,8 +40,7 @@ class MainActivity : FlutterActivity() {
                         result.success(
                             if (Build.VERSION.SDK_INT >= 23)
                                 Settings.canDrawOverlays(this)
-                            else
-                                true
+                            else true
                         )
                     }
 
@@ -60,10 +55,53 @@ class MainActivity : FlutterActivity() {
                         result.success(null)
                     }
 
+                    "isBatteryOptimizationIgnored" -> {
+                        if (Build.VERSION.SDK_INT >= 23) {
+                            val pm = getSystemService(android.os.PowerManager::class.java)
+                            result.success(pm.isIgnoringBatteryOptimizations(packageName))
+                        } else {
+                            result.success(true)
+                        }
+                    }
+
+                    "requestIgnoreBatteryOptimization" -> {
+                        if (Build.VERSION.SDK_INT >= 23) {
+                            val intent = Intent(
+                                Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
+                                Uri.parse("package:$packageName")
+                            )
+                            startActivityForResult(intent, BATTERY_REQ)
+                        }
+                        result.success(null)
+                    }
+
+                    "startFloatingPanel" -> {
+                        if (Settings.canDrawOverlays(this)) {
+                            val intent = Intent(this, FloatingPanelService::class.java)
+                            if (Build.VERSION.SDK_INT >= 26) {
+                                startForegroundService(intent)
+                            } else {
+                                startService(intent)
+                            }
+                            result.success(true)
+                        } else {
+                            result.success(false)
+                        }
+                    }
+
+                    "stopFloatingPanel" -> {
+                        stopService(Intent(this, FloatingPanelService::class.java))
+                        result.success(null)
+                    }
+
+                    "isFloatingPanelRunning" -> {
+                        result.success(FloatingPanelService.isRunning)
+                    }
+
                     "getStats" -> {
                         val prefs = getSharedPreferences("MeClickerPrefs", MODE_PRIVATE)
                         result.success(mapOf(
-                            "acceptCount" to prefs.getInt("accept_count", 0),
+                            "acceptCount"   to prefs.getInt("accept_count", 0),
                             "lastLatencyMs" to prefs.getLong("last_latency_ms", 0L)
                         ))
                     }
