@@ -1,21 +1,12 @@
-def localProperties = new Properties()
-def localPropertiesFile = rootProject.file('local.properties')
-if (localPropertiesFile.exists()) {
-    localPropertiesFile.withReader('UTF-8') { reader -> localProperties.load(reader) }
+plugins {
+    id "com.android.application"
+    id "kotlin-android"
+    id "dev.flutter.flutter-gradle-plugin"
 }
-
-def flutterRoot = localProperties.getProperty('flutter.sdk')
-if (flutterRoot == null) {
-    throw new GradleException("Flutter SDK not found. Define location with flutter.sdk in the local.properties file.")
-}
-
-apply plugin: 'com.android.application'
-apply plugin: 'kotlin-android'
-apply from: "$flutterRoot/packages/flutter_tools/gradle/flutter.gradle"
 
 android {
     namespace "com.dr.clicker.atikapp"
-    compileSdkVersion 35
+    compileSdk 35
     ndkVersion flutter.ndkVersion
 
     compileOptions {
@@ -30,8 +21,8 @@ android {
     }
     defaultConfig {
         applicationId "com.dr.clicker.atikapp"
-        minSdkVersion 23
-        targetSdkVersion 35
+        minSdk 23
+        targetSdk 35
         versionCode 1
         versionName "1.0.0"
     }
@@ -48,5 +39,5 @@ flutter {
 }
 
 dependencies {
-    implementation "org.jetbrains.kotlin:kotlin-stdlib-jdk7:$kotlin_version"
+    implementation "org.jetbrains.kotlin:kotlin-stdlib-jdk7:1.9.24"
 }
