@@ -208,24 +208,47 @@ class MyAccessibilityService : AccessibilityService() {
     }
 
     // ────────────────────────────────────────────────────────────────
-    // SCANNER — Accepts ALL rides (no filter checks)
+    // SCANNER — Accepts ONLY rides matching saved filters
     // ────────────────────────────────────────────────────────────────
 
     private fun scanAndClick(root: AccessibilityNodeInfo, ts: Long, tag: String) {
-        // Collect ALL visible numbers (for logging only)
+        // Read saved filters from prefs
+        val minPrice  = getIntPref("min_price")
+        val maxPrice  = getIntPref("max_price").let { if (it == 0) 99999 else it }
+        val minPickup = getFloatPref("min_pickup")
+        val maxDrop   = getFloatPref("max_drop")
+
+        // Collect visible numbers
         val numbers = mutableListOf<Double>()
         collectText(root) { txt ->
             val n = toNumber(txt)
             if (n > 0) numbers.add(n)
         }
 
-        // Extract price/pickup/drop from numbers for logging
-        var price = numbers.find { it in 10.0..9999.0 } ?: -1.0
+        // Extract price/pickup/drop
+        var price  = numbers.find { it in 10.0..9999.0 } ?: -1.0
         var pickup = numbers.find { it in 0.1..50.0 } ?: -1.0
-        var drop = numbers.find { it in 0.1..200.0 && it != price } ?: -1.0
+        var drop   = numbers.find { it in 0.1..200.0 && it != price } ?: -1.0
 
-        // ACCEPT ALL RIDES — no filter checks
-        // Just find the accept button and click it
+        // FILTER CHECKS — only accept matching rides
+        if (minPrice > 0 && price > 0 && price < minPrice) {
+            log("$tag ✗ Price ₹${price.toInt()} < min ₹$minPrice")
+            return
+        }
+        if (maxPrice > 0 && price > 0 && price > maxPrice) {
+            log("$tag ✗ Price ₹${price.toInt()} > max ₹$maxPrice")
+            return
+        }
+        if (minPickup > 0 && pickup > 0 && pickup < minPickup) {
+            log("$tag ✗ Pickup ${pickup}km < min ${minPickup}km")
+            return
+        }
+        if (maxDrop > 0 && drop > 0 && drop > maxDrop) {
+            log("$tag ✗ Drop ${drop}km > max ${maxDrop}km")
+            return
+        }
+
+        // Ride matches — find accept button and click
         clickAccept(root, ts, tag, price, pickup, drop)
     }
 
