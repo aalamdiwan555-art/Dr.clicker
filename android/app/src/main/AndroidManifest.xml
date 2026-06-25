@@ -2,13 +2,27 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="com.dr.clicker.atikapp">
 
+    <!-- Overlay permission for drawing on top of other apps -->
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+
+    <!-- Foreground service permissions -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+
+    <!-- WakeLock to keep engine running -->
     <uses-permission android:name="android.permission.WAKE_LOCK" />
+
+    <!-- Battery optimization ignore -->
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+
+    <!-- Notifications -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <!-- Boot completed to auto-start -->
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+
+    <!-- Vibrate for beep feedback -->
+    <uses-permission android:name="android.permission.VIBRATE" />
 
     <application
         android:label="Dr.Clicker"
@@ -35,8 +49,9 @@
             </intent-filter>
         </activity>
 
+        <!-- Accessibility Service — the auto-click engine -->
         <service
-            android:name=".AutoClickService"
+            android:name=".MyAccessibilityService"
             android:exported="true"
             android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE"
             android:directBootAware="true"
