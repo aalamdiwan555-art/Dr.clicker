@@ -14,22 +14,24 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   static const _ch = MethodChannel('com.example.meclicker/settings');
 
-  // Controllers
   final _minPrice  = TextEditingController();
   final _maxPrice  = TextEditingController();
   final _minPickup = TextEditingController();
   final _maxDrop   = TextEditingController();
 
-  // State
-  bool _master     = false;
-  bool _a11yOk     = false;
-  bool _overlayOk  = false;
-  int  _accepts    = 0;
-  int  _latencyMs  = 0;
+  bool _master      = false;
+  bool _a11yOk      = false;
+  bool _overlayOk   = false;
+  bool _batteryOk   = false;
+  bool _floatOn     = false;
+  int  _accepts     = 0;
+  int  _latencyMs   = 0;
   Timer? _ticker;
 
   static const _yellow = Color(0xFFFFD600);
   static const _green  = Color(0xFF00E676);
+  static const _red    = Color(0xFFEF5350);
+  static const _blue   = Color(0xFF00B0FF);
   static const _card   = Color(0xFF1A1A1A);
   static const _border = Color(0xFF2A2A2A);
   static const _bg     = Color(0xFF0D0D0D);
@@ -72,17 +74,21 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   void _save() {
     final p = widget.prefs;
-    p.setInt('min_price',      int.tryParse(_minPrice.text.trim())     ?? 0);
-    p.setInt('max_price',      int.tryParse(_maxPrice.text.trim())     ?? 0);
-    p.setDouble('min_pickup',  double.tryParse(_minPickup.text.trim()) ?? 0.0);
-    p.setDouble('max_drop',    double.tryParse(_maxDrop.text.trim())   ?? 0.0);
-    p.setBool('master_switch',  _master);
+    p.setInt('min_price',    int.tryParse(_minPrice.text.trim())     ?? 0);
+    p.setInt('max_price',    int.tryParse(_maxPrice.text.trim())     ?? 0);
+    p.setDouble('min_pickup', double.tryParse(_minPickup.text.trim()) ?? 0.0);
+    p.setDouble('max_drop',   double.tryParse(_maxDrop.text.trim())  ?? 0.0);
+    p.setBool('master_switch', _master);
   }
 
   Future<void> _refreshAll() async {
-    await _checkA11y();
-    await _checkOverlay();
-    await _refreshStats();
+    await Future.wait([
+      _checkA11y(),
+      _checkOverlay(),
+      _checkBattery(),
+      _checkFloat(),
+      _refreshStats(),
+    ]);
   }
 
   Future<void> _refreshStats() async {
@@ -109,18 +115,52 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     } catch (_) {}
   }
 
+  Future<void> _checkBattery() async {
+    try {
+      final ok = await _ch.invokeMethod<bool>('isBatteryOptimizationIgnored') ?? false;
+      if (mounted) setState(() => _batteryOk = ok);
+    } catch (_) {}
+  }
+
+  Future<void> _checkFloat() async {
+    try {
+      final ok = await _ch.invokeMethod<bool>('isFloatingPanelRunning') ?? false;
+      if (mounted) setState(() => _floatOn = ok);
+    } catch (_) {}
+  }
+
   Future<void> _toggle(bool val) async {
     if (val && !_a11yOk) {
-      _snack('Enable Dr.Clicker in Accessibility Settings first');
+      _snack('Pehle Accessibility mein Dr.Clicker enable karo!');
       await _ch.invokeMethod('openAccessibilitySettings');
       return;
     }
     if (val && !_overlayOk) {
-      _snack('Grant overlay permission for best results');
+      _snack('Overlay permission do — floating panel ke liye zaroori hai');
       await _ch.invokeMethod('requestOverlayPermission');
+      return;
     }
     setState(() => _master = val);
     _save();
+    _snack(val ? '⚡ Engine ON — Screen monitor ho raha hai!' : '🔴 Engine OFF');
+  }
+
+  Future<void> _toggleFloat(bool val) async {
+    if (val && !_overlayOk) {
+      _snack('Overlay permission zaroori hai — Tap karo "Overlay Grant"');
+      await _ch.invokeMethod('requestOverlayPermission');
+      return;
+    }
+    if (val) {
+      final ok = await _ch.invokeMethod<bool>('startFloatingPanel') ?? false;
+      setState(() => _floatOn = ok);
+      if (!ok) _snack('Overlay permission nahi mili');
+      else _snack('🟢 Floating panel chalu hua!');
+    } else {
+      await _ch.invokeMethod('stopFloatingPanel');
+      setState(() => _floatOn = false);
+      _snack('Floating panel band hua');
+    }
   }
 
   Future<void> _reset() async {
@@ -129,7 +169,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   void _snack(String m) => ScaffoldMessenger.of(context)
-      .showSnackBar(SnackBar(content: Text(m), duration: const Duration(seconds: 3)));
+      .showSnackBar(SnackBar(
+        content: Text(m),
+        duration: const Duration(seconds: 3),
+        backgroundColor: const Color(0xFF1A1A1A),
+      ));
 
   @override
   Widget build(BuildContext context) {
@@ -138,39 +182,52 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       backgroundColor: _bg,
       body: SafeArea(
         child: SingleChildScrollView(
-          padding: const EdgeInsets.fromLTRB(20, 20, 20, 40),
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 40),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               _header(active),
-              const SizedBox(height: 20),
-              // Permission banners
-              if (!_a11yOk) ...[_a11yBanner(), const SizedBox(height: 12)],
-              if (!_overlayOk) ...[_overlayBanner(), const SizedBox(height: 12)],
-              _engineCard(),
+              const SizedBox(height: 16),
+
+              // Permission Steps
+              _permSection(active),
               const SizedBox(height: 14),
+
+              // Engine card
+              _engineCard(),
+              const SizedBox(height: 12),
+
+              // Floating panel card
+              _floatCard(),
+              const SizedBox(height: 14),
+
+              // Filters
               _filterCard(
                 title: 'PRICE FILTER',
-                subtitle: 'Rupees (₹)',
+                subtitle: 'Rupees (₹) — 0 = koi limit nahi',
                 icon: Icons.currency_rupee,
-                left:  _field(_minPrice,  'Min Price',  '0'),
-                right: _field(_maxPrice,  'Max Price',  '99999'),
+                left:  _field(_minPrice,  'Min ₹',   '0'),
+                right: _field(_maxPrice,  'Max ₹',   '9999'),
               ),
-              const SizedBox(height: 14),
+              const SizedBox(height: 12),
               _filterCard(
                 title: 'DISTANCE FILTER',
-                subtitle: 'Kilometres (km)',
+                subtitle: 'Kilometres — 0 = koi limit nahi',
                 icon: Icons.map_outlined,
-                left:  _field(_minPickup, 'Min Pickup', '0.0'),
-                right: _field(_maxDrop,   'Max Drop',   '999'),
+                left:  _field(_minPickup, 'Min KM', '0'),
+                right: _field(_maxDrop,   'Max KM', '999'),
               ),
               const SizedBox(height: 14),
+
+              // Stats
               _statsRow(active),
-              const SizedBox(height: 20),
+              const SizedBox(height: 18),
+
+              // Save
               _saveBtn(),
               const SizedBox(height: 10),
               _resetBtn(),
-              const SizedBox(height: 28),
+              const SizedBox(height: 24),
               _footer(),
             ],
           ),
@@ -181,33 +238,31 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   Widget _header(bool active) {
     return Row(
-      crossAxisAlignment: CrossAxisAlignment.center,
       children: [
         Container(
-          width: 52, height: 52,
+          width: 50, height: 50,
           decoration: BoxDecoration(
             color: _yellow,
             borderRadius: BorderRadius.circular(14),
             boxShadow: [BoxShadow(color: _yellow.withOpacity(0.35), blurRadius: 16, offset: const Offset(0, 4))],
           ),
-          child: const Icon(Icons.bolt, color: Colors.black, size: 32),
+          child: const Icon(Icons.bolt, color: Colors.black, size: 30),
         ),
-        const SizedBox(width: 14),
+        const SizedBox(width: 12),
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const Text('Dr.Clicker',
-                  style: TextStyle(fontSize: 26, fontWeight: FontWeight.w900,
-                      color: Colors.white, letterSpacing: 0.3)),
-              Text('Auto-Accept with filters · Rapido & Ola',
-                  style: TextStyle(fontSize: 12, color: Colors.grey[500])),
+                  style: TextStyle(fontSize: 24, fontWeight: FontWeight.w900, color: Colors.white)),
+              Text('Auto-Accept • Rapido & Ola • 100% Free',
+                  style: TextStyle(fontSize: 11, color: Colors.grey[500])),
             ],
           ),
         ),
         AnimatedContainer(
           duration: const Duration(milliseconds: 400),
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
           decoration: BoxDecoration(
             color: active ? _green.withOpacity(0.12) : Colors.grey.withOpacity(0.1),
             borderRadius: BorderRadius.circular(20),
@@ -219,9 +274,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               Container(width: 7, height: 7,
                   decoration: BoxDecoration(shape: BoxShape.circle,
                       color: active ? _green : Colors.grey)),
-              const SizedBox(width: 6),
+              const SizedBox(width: 5),
               Text(active ? 'ON' : 'OFF',
-                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold,
+                  style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold,
                       color: active ? _green : Colors.grey)),
             ],
           ),
@@ -230,50 +285,99 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     );
   }
 
-  Widget _a11yBanner() {
-    return GestureDetector(
-      onTap: () => _ch.invokeMethod('openAccessibilitySettings'),
-      child: Container(
-        padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(
-          color: const Color(0xFF2A1800),
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: _yellow.withOpacity(0.45)),
-        ),
-        child: Row(
-          children: [
-            const Icon(Icons.warning_amber_rounded, color: _yellow, size: 20),
-            const SizedBox(width: 10),
-            const Expanded(
-              child: Text('Tap here → Enable Dr.Clicker in\nAccessibility Settings',
-                  style: TextStyle(color: _yellow, fontSize: 13, height: 1.4)),
-            ),
-            const Icon(Icons.arrow_forward_ios, color: _yellow, size: 14),
-          ],
-        ),
+  Widget _permSection(bool active) {
+    return _box(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(children: [
+            const Icon(Icons.security, color: _yellow, size: 15),
+            const SizedBox(width: 6),
+            const Text('PERMISSIONS — YEH TEEN STEP KARO',
+                style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800,
+                    color: _yellow, letterSpacing: 0.8)),
+          ]),
+          const SizedBox(height: 12),
+          _permRow(
+            step: '1',
+            label: 'Accessibility Enable Karo',
+            ok: _a11yOk,
+            onTap: () => _ch.invokeMethod('openAccessibilitySettings'),
+            color: _yellow,
+          ),
+          const SizedBox(height: 8),
+          _permRow(
+            step: '2',
+            label: 'Overlay Permission Do',
+            ok: _overlayOk,
+            onTap: () => _ch.invokeMethod('requestOverlayPermission'),
+            color: _blue,
+          ),
+          const SizedBox(height: 8),
+          _permRow(
+            step: '3',
+            label: 'Battery Optimization Hatao',
+            ok: _batteryOk,
+            onTap: () => _ch.invokeMethod('requestIgnoreBatteryOptimization'),
+            color: _green,
+          ),
+        ],
       ),
     );
   }
 
-  Widget _overlayBanner() {
+  Widget _permRow({
+    required String step,
+    required String label,
+    required bool ok,
+    required VoidCallback onTap,
+    required Color color,
+  }) {
     return GestureDetector(
-      onTap: () => _ch.invokeMethod('requestOverlayPermission'),
+      onTap: ok ? null : onTap,
       child: Container(
-        padding: const EdgeInsets.all(14),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
         decoration: BoxDecoration(
-          color: const Color(0xFF001A2A),
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: const Color(0xFF00B0FF).withOpacity(0.45)),
+          color: ok ? color.withOpacity(0.08) : const Color(0xFF111111),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(
+            color: ok ? color.withOpacity(0.4) : const Color(0xFF333333),
+          ),
         ),
         child: Row(
           children: [
-            const Icon(Icons.layers_outlined, color: Color(0xFF00B0FF), size: 20),
-            const SizedBox(width: 10),
-            const Expanded(
-              child: Text('Tap here → Grant Overlay\npermission for best results',
-                  style: TextStyle(color: Color(0xFF00B0FF), fontSize: 13, height: 1.4)),
+            Container(
+              width: 22, height: 22,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: ok ? color.withOpacity(0.2) : const Color(0xFF222222),
+              ),
+              child: Center(
+                child: ok
+                    ? Icon(Icons.check, color: color, size: 13)
+                    : Text(step, style: TextStyle(
+                        color: color, fontSize: 11, fontWeight: FontWeight.bold)),
+              ),
             ),
-            const Icon(Icons.arrow_forward_ios, color: Color(0xFF00B0FF), size: 14),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(label,
+                  style: TextStyle(
+                      color: ok ? color : Colors.white,
+                      fontSize: 13,
+                      fontWeight: ok ? FontWeight.w500 : FontWeight.w600)),
+            ),
+            if (!ok)
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: color.withOpacity(0.15),
+                  borderRadius: BorderRadius.circular(6),
+                  border: Border.all(color: color.withOpacity(0.4)),
+                ),
+                child: Text('TAP', style: TextStyle(color: color, fontSize: 10,
+                    fontWeight: FontWeight.bold)),
+              ),
           ],
         ),
       ),
@@ -284,25 +388,80 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     return _box(
       child: Row(
         children: [
+          Container(
+            width: 40, height: 40,
+            decoration: BoxDecoration(
+              color: _master ? _yellow.withOpacity(0.15) : const Color(0xFF111111),
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: _master ? _yellow.withOpacity(0.4) : const Color(0xFF333333)),
+            ),
+            child: Icon(Icons.bolt, color: _master ? _yellow : Colors.grey, size: 22),
+          ),
+          const SizedBox(width: 12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const Text('Engine Activation',
-                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white)),
-                const SizedBox(height: 4),
-                Text('Auto-tap Accept with price & distance filters',
-                    style: TextStyle(fontSize: 12, color: Colors.grey[500])),
+                    style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: Colors.white)),
+                Text(_master && _a11yOk
+                    ? '⚡ Screen monitor ho raha hai — auto-click chalega'
+                    : 'Ride aayegi toh auto-accept karega',
+                    style: TextStyle(fontSize: 11, color: Colors.grey[500])),
               ],
             ),
           ),
           Transform.scale(
-            scale: 0.9,
+            scale: 0.85,
             child: Switch(
               value: _master,
               onChanged: _toggle,
               activeColor: Colors.black,
               activeTrackColor: _yellow,
+              inactiveThumbColor: Colors.grey[600],
+              inactiveTrackColor: Colors.grey[800],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _floatCard() {
+    return _box(
+      child: Row(
+        children: [
+          Container(
+            width: 40, height: 40,
+            decoration: BoxDecoration(
+              color: _floatOn ? _blue.withOpacity(0.15) : const Color(0xFF111111),
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: _floatOn ? _blue.withOpacity(0.4) : const Color(0xFF333333)),
+            ),
+            child: Icon(Icons.picture_in_picture_alt_rounded,
+                color: _floatOn ? _blue : Colors.grey, size: 20),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('Floating Panel',
+                    style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: Colors.white)),
+                Text(_floatOn
+                    ? '🟢 Screen pe dikhta hai — drag kar sako'
+                    : 'Rapido/Ola ke upar status panel',
+                    style: TextStyle(fontSize: 11, color: Colors.grey[500])),
+              ],
+            ),
+          ),
+          Transform.scale(
+            scale: 0.85,
+            child: Switch(
+              value: _floatOn,
+              onChanged: _toggleFloat,
+              activeColor: Colors.black,
+              activeTrackColor: _blue,
               inactiveThumbColor: Colors.grey[600],
               inactiveTrackColor: Colors.grey[800],
             ),
@@ -323,26 +482,21 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              Icon(icon, color: _yellow, size: 16),
-              const SizedBox(width: 7),
-              Text(title,
-                  style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800,
-                      color: _yellow, letterSpacing: 1.1)),
-              const SizedBox(width: 6),
-              Text(subtitle,
-                  style: TextStyle(fontSize: 11, color: Colors.grey[600])),
-            ],
-          ),
-          const SizedBox(height: 14),
-          Row(
-            children: [
-              Expanded(child: left),
-              const SizedBox(width: 12),
-              Expanded(child: right),
-            ],
-          ),
+          Row(children: [
+            Icon(icon, color: _yellow, size: 14),
+            const SizedBox(width: 6),
+            Text(title,
+                style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800,
+                    color: _yellow, letterSpacing: 1.0)),
+          ]),
+          const SizedBox(height: 4),
+          Text(subtitle, style: TextStyle(fontSize: 10, color: Colors.grey[700])),
+          const SizedBox(height: 12),
+          Row(children: [
+            Expanded(child: left),
+            const SizedBox(width: 10),
+            Expanded(child: right),
+          ]),
         ],
       ),
     );
@@ -351,80 +505,64 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   Widget _statsRow(bool active) {
     return Row(
       children: [
-        Expanded(
-          child: _statBox(
-            value: _accepts.toString(),
-            label: 'Rides Accepted',
-            icon: Icons.check_circle_outline_rounded,
-            color: _accepts > 0 ? _yellow : Colors.grey,
-          ),
-        ),
+        Expanded(child: _statBox(
+          value: _accepts.toString(),
+          label: 'Rides Accepted',
+          icon: Icons.check_circle_outline_rounded,
+          color: _accepts > 0 ? _yellow : Colors.grey,
+        )),
         const SizedBox(width: 12),
-        Expanded(
-          child: _statBox(
-            value: _latencyMs > 0 ? '${_latencyMs}ms' : '--',
-            label: 'Last Latency',
-            icon: Icons.timer_outlined,
-            color: _latencyMs > 0 ? _green : Colors.grey,
-          ),
-        ),
+        Expanded(child: _statBox(
+          value: _latencyMs > 0 ? '${_latencyMs}ms' : '--',
+          label: 'Last Click Speed',
+          icon: Icons.timer_outlined,
+          color: _latencyMs > 0 ? _green : Colors.grey,
+        )),
       ],
     );
   }
 
-  Widget _statBox({
-    required String value,
-    required String label,
-    required IconData icon,
-    required Color color,
-  }) {
+  Widget _statBox({required String value, required String label,
+      required IconData icon, required Color color}) {
     return _box(
-      child: Column(
-        children: [
-          Icon(icon, color: color, size: 22),
-          const SizedBox(height: 10),
-          Text(value,
-              style: TextStyle(fontSize: 28, fontWeight: FontWeight.w900, color: color)),
-          const SizedBox(height: 4),
-          Text(label,
-              textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 11, color: Colors.grey[600])),
-        ],
-      ),
+      child: Column(children: [
+        Icon(icon, color: color, size: 22),
+        const SizedBox(height: 8),
+        Text(value, style: TextStyle(fontSize: 26, fontWeight: FontWeight.w900, color: color)),
+        const SizedBox(height: 4),
+        Text(label, textAlign: TextAlign.center,
+            style: TextStyle(fontSize: 11, color: Colors.grey[600])),
+      ]),
     );
   }
 
   Widget _saveBtn() {
     return SizedBox(
-      width: double.infinity,
-      height: 54,
+      width: double.infinity, height: 52,
       child: ElevatedButton.icon(
-        icon: const Icon(Icons.save_alt_rounded, size: 20),
+        icon: const Icon(Icons.save_alt_rounded, size: 19),
         label: const Text('Save Settings',
-            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+            style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
         style: ElevatedButton.styleFrom(
-          backgroundColor: _yellow,
-          foregroundColor: Colors.black,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-          elevation: 4,
-          shadowColor: _yellow.withOpacity(0.4),
+          backgroundColor: _yellow, foregroundColor: Colors.black,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(13)),
+          elevation: 4, shadowColor: _yellow.withOpacity(0.4),
         ),
-        onPressed: () { _save(); _snack('Settings saved ✓'); },
+        onPressed: () { _save(); _snack('✅ Settings save ho gayi!'); },
       ),
     );
   }
 
   Widget _resetBtn() {
     return SizedBox(
-      width: double.infinity,
-      height: 46,
+      width: double.infinity, height: 44,
       child: OutlinedButton.icon(
-        icon: const Icon(Icons.refresh_rounded, size: 18),
-        label: const Text('Reset Counter', style: TextStyle(fontSize: 14)),
+        icon: const Icon(Icons.refresh_rounded, size: 17),
+        label: const Text('Reset Counter', style: TextStyle(fontSize: 13)),
         style: OutlinedButton.styleFrom(
           foregroundColor: Colors.grey[500],
           side: BorderSide(color: Colors.grey[800]!),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(11)),
         ),
         onPressed: _reset,
       ),
@@ -434,8 +572,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   Widget _footer() {
     return Center(
       child: Text(
-        '⚡ Dr.Clicker v24.1 • 100% Free • No Login • No Ads • Fully Offline',
-        style: TextStyle(fontSize: 11, color: Colors.grey[700]),
+        '⚡ Dr.Clicker v24.1 • 100% Free • Offline • No Login',
+        style: TextStyle(fontSize: 10, color: Colors.grey[800]),
       ),
     );
   }
@@ -443,10 +581,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   Widget _box({required Widget child}) {
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(18),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: _card,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(14),
         border: Border.all(color: _border),
       ),
       child: child,
@@ -458,15 +596,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       controller: ctrl,
       keyboardType: const TextInputType.numberWithOptions(decimal: true),
       inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[\d.]'))],
-      style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w500),
+      style: const TextStyle(color: Colors.white, fontSize: 15),
       cursorColor: _yellow,
       decoration: InputDecoration(
-        labelText: label,
-        hintText: hint,
-        labelStyle: TextStyle(color: Colors.grey[600], fontSize: 13),
-        hintStyle: TextStyle(color: Colors.grey[800], fontSize: 13),
-        filled: true,
-        fillColor: const Color(0xFF111111),
+        labelText: label, hintText: hint,
+        labelStyle: TextStyle(color: Colors.grey[600], fontSize: 12),
+        hintStyle: TextStyle(color: Colors.grey[800], fontSize: 12),
+        filled: true, fillColor: const Color(0xFF111111),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(10),
           borderSide: const BorderSide(color: Color(0xFF2E2E2E)),
@@ -475,7 +611,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           borderRadius: BorderRadius.circular(10),
           borderSide: const BorderSide(color: _yellow, width: 1.5),
         ),
-        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
       ),
     );
   }
