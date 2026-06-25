@@ -2,15 +2,16 @@ name: Build Dr.Clicker APK
 
 on:
   push:
-    branches: [ main ]
+    branches: [ main, master ]
   workflow_dispatch:
 
 jobs:
   build:
+    name: Build APK
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout
+      - name: Checkout code
         uses: actions/checkout@v4
 
       - name: Set up Java 17
@@ -19,7 +20,7 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
 
-      - name: Set up Flutter 3.24.5
+      - name: Set up Flutter
         uses: subosito/flutter-action@v2
         with:
           flutter-version: '3.24.5'
@@ -41,6 +42,9 @@ jobs:
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: DrClicker-v1.0-debug
+          name: DrClicker-v24.1-debug
           path: build/app/outputs/flutter-apk/app-debug.apk
           retention-days: 30
+
+      - name: Show APK info
+        run: ls -lh build/app/outputs/flutter-apk/
